@@ -59,7 +59,8 @@ class DataSetForBBD: # Bounding Box Detection
             for img_file in os.listdir(img_dir):
                 text_file_name = img_file.replace('.jpg', '.txt')
                 if not os.path.exists(os.path.join(label_dir, text_file_name)):
-                    raise FileNotFoundError(f"The label file {text_file_name} does not exist")
+                    print(f"The label file {text_file_name} does not exist")
+                    continue
                 img_path = os.path.join(img_dir, img_file)
                 label_path = os.path.join(label_dir, text_file_name)
                 self.dataset_paths[dataset_type]['images'].append(img_path)
@@ -91,8 +92,8 @@ class DataSetForBBD: # Bounding Box Detection
     
     def get_batch(self, dataset_type):
         """Returns a batch of images and labels."""
-        images = np.zeros((self.batch_size, 224, 224, 3))
-        labels = np.zeros((self.batch_size, 4))
+        images = np.zeros((self.batch_size, 3, 224, 224))
+        labels = []
         n_of_files = len(self.dataset_paths[dataset_type]['images'])
         start_idx = (self.batch_counts[dataset_type] * self.batch_size) % n_of_files
 
@@ -100,13 +101,20 @@ class DataSetForBBD: # Bounding Box Detection
             idx = (start_idx + i) % n_of_files
             
             img = self._preprocess_image(self.dataset_paths[dataset_type]['images'][idx])
-            label = self._preprocess_label(self.dataset_paths[dataset_type]['labels'][idx])
+            img = np.transpose(img, (2, 0, 1))
+            boxes = self._preprocess_label(self.dataset_paths[dataset_type]['labels'][idx])
+            
             images[i] = img
-            labels[i] = label
+            labels.append(boxes)
         
         self.batch_counts[dataset_type] += 1
         
-        return images, labels
+        max_boxes = max(len(boxes) for boxes in labels)
+        padded_labels = np.zeros((self.batch_size, max_boxes, 4))
+        for i, boxes in enumerate(labels):
+            padded_labels[i, :len(boxes)] = boxes
+        
+        return images, padded_labels
     
 
-dataset = DataSetForBBD('datasets/', batch_size=64, shuffle=True, seed=42)
+dataset = DataSetForBBD('datasets/licence-plate-detection/', batch_size=64, shuffle=True, seed=42)

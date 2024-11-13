@@ -15,7 +15,7 @@ patience_counter = 0
 for epoch in range(num_epochs):
     epoch_loss = 0
     num_batches = 0
-    
+    print(f"Epoch {epoch+1} started")
     # Training phase
     while True:
         try:
@@ -24,6 +24,9 @@ for epoch in range(num_epochs):
             
             # Convert images to the expected format (B, C, H, W)
             images = np.transpose(images, (0, 3, 1, 2))
+            
+            # Debug: Print input shape
+            print(f"Batch {num_batches+1} input shape: {images.shape}")
             
             # Train on batch
             batch_loss = model.train(images, labels)
@@ -50,6 +53,9 @@ for epoch in range(num_epochs):
             # Get batch of validation data
             val_images, val_labels = dataset.get_batch('val')
             val_images = np.transpose(val_images, (0, 3, 1, 2))
+            
+            # Debug: Print validation input shape
+            print(f"Validation Batch {val_batches+1} input shape: {val_images.shape}")
             
             # Get predictions
             predictions = model.predict(val_images)

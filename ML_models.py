@@ -1,49 +1,50 @@
-from NeuralNetwork import *
-
+from NeuralNetwork.Layers import *
+from NeuralNetwork.Functions import *
+from NeuralNetwork.Other import *
 class NumberPlateDetector:
-    def __init__(self, input_shape=(3, 416, 416), num_classes=1):
+    def __init__(self, input_shape=(3, 224, 224), num_classes=4):
         self.model = Model()
         
         # Backbone Network (optimized for small object detection)
         # First block
-        self.model.add(Conv2DLayer(input_shape, 32, kernel_size=3))
-        self.model.add(BatchNormalization((32, 414, 414)))
-        self.model.add(ReLU((32, 414, 414)))
-        self.model.add(MaxPooling2D((32, 414, 414)))
+        self.model.add(Conv2DLayer(input_shape, 32, kernel_size=3))  # Output: (32, 222, 222)
+        self.model.add(BatchNormalization((32, 222, 222)))
+        self.model.add(ReLU((32, 222, 222)))
+        self.model.add(MaxPooling2D((32, 222, 222), pool_size=2, stride=2))  # Output: (32, 111, 111)
         
         # Second block
-        self.model.add(Conv2DLayer((32, 207, 207), 64, kernel_size=3))
-        self.model.add(BatchNormalization(64))
-        self.model.add(ReLU((64, 205, 205)))
-        self.model.add(MaxPooling2D((64, 205, 205)))
+        self.model.add(Conv2DLayer((32, 111, 111), 64, kernel_size=3))  # Output: (64, 109, 109)
+        self.model.add(BatchNormalization((64, 109, 109)))
+        self.model.add(ReLU((64, 109, 109)))
+        self.model.add(MaxPooling2D((64, 109, 109), pool_size=2, stride=2))  # Output: (64, 54, 54)
         
         # Third block (enhanced for small object detection)
-        self.model.add(Conv2DLayer((64, 102, 102), 128, kernel_size=3))
-        self.model.add(BatchNormalization(128))
-        self.model.add(ReLU((128, 100, 100)))
-        self.model.add(Conv2DLayer((128, 100, 100), 64, kernel_size=1))
-        self.model.add(BatchNormalization(64))
-        self.model.add(ReLU((64, 100, 100)))
-        self.model.add(Conv2DLayer((64, 100, 100), 128, kernel_size=3))
-        self.model.add(BatchNormalization(128))
-        self.model.add(ReLU((128, 98, 98)))
-        self.model.add(MaxPooling2D((128, 98, 98)))
+        self.model.add(Conv2DLayer((64, 54, 54), 128, kernel_size=3))  # Output: (128, 52, 52)
+        self.model.add(BatchNormalization((128, 52, 52)))
+        self.model.add(ReLU((128, 52, 52)))
+        self.model.add(Conv2DLayer((128, 52, 52), 64, kernel_size=1))    # Output: (64, 52, 52)
+        self.model.add(BatchNormalization((64, 52, 52)))
+        self.model.add(ReLU((64, 52, 52)))
+        self.model.add(Conv2DLayer((64, 52, 52), 128, kernel_size=3))   # Output: (128, 50, 50)
+        self.model.add(BatchNormalization((128, 50, 50)))
+        self.model.add(ReLU((128, 50, 50)))
+        self.model.add(MaxPooling2D((128, 50, 50), pool_size=2, stride=2))  # Output: (128, 25, 25)
         
         # Fourth block
-        self.model.add(Conv2DLayer((128, 49, 49), 256, kernel_size=3))
-        self.model.add(BatchNormalization(256))
-        self.model.add(ReLU((256, 47, 47)))
-        self.model.add(Conv2DLayer((256, 47, 47), 128, kernel_size=1))
-        self.model.add(BatchNormalization(128))
-        self.model.add(ReLU((128, 47, 47)))
-        self.model.add(Conv2DLayer((128, 47, 47), 256, kernel_size=3))
-        self.model.add(BatchNormalization(256))
-        self.model.add(ReLU((256, 45, 45)))
+        self.model.add(Conv2DLayer((128, 25, 25), 256, kernel_size=3))   # Output: (256, 23, 23)
+        self.model.add(BatchNormalization((256, 23, 23)))
+        self.model.add(ReLU((256, 23, 23)))
+        self.model.add(Conv2DLayer((256, 23, 23), 128, kernel_size=1))    # Output: (128, 23, 23)
+        self.model.add(BatchNormalization((128, 23, 23)))
+        self.model.add(ReLU((128, 23, 23)))
+        self.model.add(Conv2DLayer((128, 23, 23), 256, kernel_size=3))    # Output: (256, 21, 21)
+        self.model.add(BatchNormalization((256, 21, 21)))
+        self.model.add(ReLU((256, 21, 21)))
         
         # Detection head
         num_anchors = 3
         output_channels = num_anchors * (5 + num_classes)  # 5 for bbox coords + confidence
-        self.detection_head = DetectionHead((256, 45, 45), num_classes, num_anchors)
+        self.detection_head = DetectionHead((256, 21, 21), num_classes, num_anchors)
         self.model.add(self.detection_head)
         
         # Anchor boxes optimized for number plates (typically rectangular)
@@ -57,10 +58,22 @@ class NumberPlateDetector:
         self.optimizer = Adam()
 
     def train(self, x, y):
+        """
+        x: shape (batch_size, 3, 224, 224)
+        y: shape (batch_size, max_boxes, 4)
+        """
         self.model.train()
         predictions = self.model.forward(x)
-        loss = self.loss.calculate(predictions, y)
-        gradients = self.loss.gradient(predictions, y)
+        
+        # Ensure predictions match the expected shape
+        batch_size = x.shape[0]
+        grid_size = predictions.shape[2:4]
+        predictions = predictions.reshape(batch_size, 3, -1, grid_size[0], grid_size[1])
+        
+        # Calculate loss only for valid boxes (non-zero)
+        valid_mask = np.any(y != 0, axis=2)
+        loss = self.loss.calculate(predictions, y[valid_mask])
+        gradients = self.loss.gradient(predictions, y[valid_mask])
         
         # Backward pass through the model
         for layer in reversed(self.model.layers):
@@ -71,6 +84,12 @@ class NumberPlateDetector:
         return loss
 
     def predict(self, x):
+        """
+        x: shape (batch_size, 3, 224, 224)
+        """
+        if x.shape[1:] != (3, 224, 224):
+            raise ValueError(f"Expected input shape (batch_size, 3, 224, 224), got {x.shape}")
+        
         self.model.eval()
         predictions = self.model.forward(x)
         return self._post_process(predictions)
@@ -126,4 +145,17 @@ class NumberPlateDetector:
         union = box_area + boxes_area - intersection
         
         return intersection / (union + 1e-6)
+
+    def _validate_data(self, x, y=None):
+        """Validate input data formats"""
+        if x.ndim != 4:
+            raise ValueError(f"Expected 4D input (batch_size, channels, height, width), got {x.ndim}D")
+        if x.shape[1:] != (3, 224, 224):
+            raise ValueError(f"Expected shape (batch_size, 3, 224, 224), got {x.shape}")
+        
+        if y is not None:
+            if y.ndim != 3:
+                raise ValueError(f"Expected 3D labels (batch_size, max_boxes, 4), got {y.ndim}D")
+            if y.shape[2] != 4:
+                raise ValueError(f"Expected 4 values per box (x,y,w,h), got {y.shape[2]}")
 
